@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, ScrollView } from 'react-native';
-import { Card, Text, TextInput, Button, SegmentedButtons } from 'react-native-paper';
+import { View, StyleSheet, Alert, ScrollView, Image } from 'react-native';
+import { Surface, Text, TextInput, Button, SegmentedButtons } from 'react-native-paper';
 import { doc, getDoc, updateDoc, setDoc, addDoc, collection } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 
@@ -16,46 +16,34 @@ export default function TradeDetailScreen({ route, navigation }) {
   const totalCost = (parseFloat(quantity) || 0) * price;
 
   useEffect(() => {
-    fetchUserBalanceAndHolding();
+    fetchBalances();
   }, []);
 
-  const fetchUserBalanceAndHolding = async () => {
+  const fetchBalances = async () => {
     if (!auth.currentUser) return;
     try {
       const userRef = doc(db, 'users', auth.currentUser.uid);
       const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        setCashBalance(userSnap.data().cashBalance || 0);
-      }
+      if (userSnap.exists()) setCashBalance(userSnap.data().cashBalance || 0);
 
       const holdingRef = doc(db, 'users', auth.currentUser.uid, 'holdings', asset.id);
       const holdingSnap = await getDoc(holdingRef);
-      if (holdingSnap.exists()) {
-        setCurrentHolding(holdingSnap.data().quantity || 0);
-      }
+      if (holdingSnap.exists()) setCurrentHolding(holdingSnap.data().quantity || 0);
     } catch (err) {
-      console.error('Error fetching balances:', err);
+      console.error(err);
     }
   };
 
   const handleOrder = async () => {
     const qty = parseFloat(quantity);
-    if (!qty || qty <= 0) {
-      return Alert.alert('Invalid Quantity', 'Please enter a valid amount to trade.');
-    }
+    if (!qty || qty <= 0) return Alert.alert('Invalid Units', 'Please enter a valid trade amount.');
 
     if (orderType === 'buy' && totalCost > cashBalance) {
-      return Alert.alert(
-        'Insufficient Balance',
-        `Required: $${totalCost.toFixed(2)}, Available: $${cashBalance.toFixed(2)}.`
-      );
+      return Alert.alert('Insufficient Balance', `Order requires $${totalCost.toFixed(2)}, you have $${cashBalance.toFixed(2)}.`);
     }
 
     if (orderType === 'sell' && qty > currentHolding) {
-      return Alert.alert(
-        'Insufficient Holdings',
-        `You currently only hold ${currentHolding} ${asset.symbol?.toUpperCase()}.`
-      );
+      return Alert.alert('Insufficient Units', `You only hold ${currentHolding} ${asset.symbol?.toUpperCase()}.`);
     }
 
     try {
@@ -63,11 +51,9 @@ export default function TradeDetailScreen({ route, navigation }) {
       const userRef = doc(db, 'users', auth.currentUser.uid);
       const holdingRef = doc(db, 'users', auth.currentUser.uid, 'holdings', asset.id);
 
-      // 1. Update cash balance
       const newBalance = orderType === 'buy' ? cashBalance - totalCost : cashBalance + totalCost;
       await updateDoc(userRef, { cashBalance: newBalance });
 
-      // 2. Update holdings balance
       const newHoldingQty = orderType === 'buy' ? currentHolding + qty : currentHolding - qty;
       await setDoc(holdingRef, {
         assetId: asset.id,
@@ -75,10 +61,9 @@ export default function TradeDetailScreen({ route, navigation }) {
         symbol: asset.symbol,
         quantity: newHoldingQty,
         avgPrice: price,
-        image: asset.image || ''
+        image: asset.image || '',
       });
 
-      // 3. Record trade log in Firestore
       await addDoc(collection(db, 'users', auth.currentUser.uid, 'transactions'), {
         assetId: asset.id,
         name: asset.name,
@@ -87,77 +72,156 @@ export default function TradeDetailScreen({ route, navigation }) {
         price: price,
         quantity: qty,
         total: totalCost,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
-      Alert.alert(
-        'Order Executed!',
-        `Successfully ${orderType === 'buy' ? 'bought' : 'sold'} ${qty} ${asset.symbol?.toUpperCase()}`
-      );
+      Alert.alert('Trade Filled', `Filled: ${orderType.toUpperCase()} ${qty} ${asset.symbol?.toUpperCase()} at $${price.toLocaleString()}`);
       navigation.goBack();
     } catch (err) {
-      Alert.alert('Order Failed', err.message);
+      Alert.alert('Execution Error', err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const isBuy = orderType === 'buy';
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Card style={styles.card}>
-        <Card.Title
-          title={asset.name}
-          subtitle={`Current Market Price: $${price.toLocaleString()}`}
-        />
-        <Card.Content>
-          <Text variant="bodyMedium">Available Cash: ${cashBalance.toFixed(2)}</Text>
-          <Text variant="bodyMedium">
-            Current Position: {currentHolding} {asset.symbol?.toUpperCase()}
+      {/* Asset Header Banner */}
+      <Surface style={styles.topCard} elevation={2}>
+        <View style={styles.assetRow}>
+          <Image source={{ uri: asset.image }} style={styles.coinImage} />
+          <View>
+            <Text variant="titleLarge" style={styles.coinTitle}>{asset.name}</Text>
+            <Text style={styles.coinSub}>{asset.symbol?.toUpperCase()} / USD</Text>
+          </View>
+        </View>
+        <View style={styles.priceRow}>
+          <Text style={styles.label}>Execution Price</Text>
+          <Text variant="headlineMedium" style={styles.priceNum}>
+            ${price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </Text>
-        </Card.Content>
-      </Card>
+        </View>
+      </Surface>
 
-      <SegmentedButtons
-        value={orderType}
-        onValueChange={setOrderType}
-        buttons={[
-          { value: 'buy', label: 'Buy' },
-          { value: 'sell', label: 'Sell' }
-        ]}
-        style={styles.segmented}
-      />
+      {/* Account Info Stats */}
+      <View style={styles.statsGrid}>
+        <Surface style={styles.statBox}>
+          <Text style={styles.statLabel}>Buying Power</Text>
+          <Text style={styles.statVal}>${cashBalance.toFixed(2)}</Text>
+        </Surface>
+        <Surface style={styles.statBox}>
+          <Text style={styles.statLabel}>Owned Position</Text>
+          <Text style={styles.statVal}>{currentHolding} {asset.symbol?.toUpperCase()}</Text>
+        </Surface>
+      </View>
 
-      <TextInput
-        label="Units to Trade"
-        value={quantity}
-        onChangeText={setQuantity}
-        keyboardType="decimal-pad"
-        mode="outlined"
-        style={styles.input}
-      />
+      {/* Action Order Box */}
+      <Surface style={styles.orderCard} elevation={2}>
+        <SegmentedButtons
+          value={orderType}
+          onValueChange={setOrderType}
+          buttons={[
+            {
+              value: 'buy',
+              label: 'BUY / LONG',
+              style: isBuy ? { backgroundColor: '#10b981' } : {},
+              checkedColor: '#090d16',
+            },
+            {
+              value: 'sell',
+              label: 'SELL / SHORT',
+              style: !isBuy ? { backgroundColor: '#f43f5e' } : {},
+              checkedColor: '#090d16',
+            },
+          ]}
+          style={styles.segmented}
+        />
 
-      <Text variant="titleMedium" style={styles.totalText}>
-        Order Value: ${totalCost.toFixed(2)}
-      </Text>
+        <TextInput
+          label="Order Quantity (Units)"
+          value={quantity}
+          onChangeText={setQuantity}
+          keyboardType="decimal-pad"
+          mode="outlined"
+          outlineColor="#2a374f"
+          activeOutlineColor={isBuy ? '#10b981' : '#f43f5e'}
+          textColor="#f8fafc"
+          style={styles.input}
+        />
 
-      <Button
-        mode="contained"
-        loading={loading}
-        onPress={handleOrder}
-        buttonColor={orderType === 'buy' ? '#2e7d32' : '#d32f2f'}
-        style={styles.btn}
-      >
-        Confirm {orderType.toUpperCase()} Order
-      </Button>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Total Order Cost</Text>
+          <Text style={[styles.summaryVal, { color: isBuy ? '#10b981' : '#f43f5e' }]}>
+            ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </Text>
+        </View>
+
+        <Button
+          mode="contained"
+          loading={loading}
+          onPress={handleOrder}
+          buttonColor={isBuy ? '#10b981' : '#f43f5e'}
+          textColor="#090d16"
+          contentStyle={styles.btnContent}
+          style={styles.submitBtn}
+        >
+          Confirm {orderType.toUpperCase()} Order
+        </Button>
+      </Surface>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16 },
-  card: { marginBottom: 16 },
+  container: { flexGrow: 1, backgroundColor: '#090d16', padding: 16 },
+  topCard: {
+    backgroundColor: '#111726',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    marginBottom: 12,
+  },
+  assetRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  coinImage: { width: 44, height: 44, borderRadius: 22, marginRight: 14 },
+  coinTitle: { fontWeight: '800', color: '#f8fafc' },
+  coinSub: { color: '#64748b', fontSize: 13, fontWeight: '600' },
+  priceRow: { borderTopWidth: 1, borderTopColor: '#1e293b', paddingTop: 12 },
+  label: { color: '#64748b', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  priceNum: { color: '#38bdf8', fontWeight: '800', marginTop: 2 },
+  statsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
+  statBox: {
+    flex: 0.485,
+    backgroundColor: '#111726',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+  },
+  statLabel: { color: '#64748b', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
+  statVal: { color: '#f8fafc', fontWeight: '700', fontSize: 14, marginTop: 4 },
+  orderCard: {
+    backgroundColor: '#111726',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+  },
   segmented: { marginBottom: 16 },
-  input: { marginBottom: 16 },
-  totalText: { marginVertical: 12, fontWeight: 'bold', textAlign: 'center' },
-  btn: { paddingVertical: 4 }
+  input: { backgroundColor: '#090d16', marginBottom: 16 },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#1e293b',
+    marginBottom: 16,
+  },
+  summaryLabel: { color: '#94a3b8', fontSize: 14, fontWeight: '500' },
+  summaryVal: { fontSize: 18, fontWeight: '800' },
+  submitBtn: { borderRadius: 12 },
+  btnContent: { height: 48 },
 });

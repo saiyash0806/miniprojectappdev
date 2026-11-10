@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, View, RefreshControl } from 'react-native';
-import { List, Avatar, Text, Searchbar, ActivityIndicator } from 'react-native-paper';
+import { FlatList, StyleSheet, View, RefreshControl, TouchableOpacity, Image } from 'react-native';
+import { Text, Searchbar, ActivityIndicator, Surface } from 'react-native-paper';
 
 export default function MarketScreen({ navigation }) {
   const [marketData, setMarketData] = useState([]);
@@ -14,9 +14,7 @@ export default function MarketScreen({ navigation }) {
         'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=25&page=1&sparkline=false'
       );
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setMarketData(data);
-      }
+      if (Array.isArray(data)) setMarketData(data);
     } catch (err) {
       console.error('API Error: ', err);
     } finally {
@@ -36,9 +34,9 @@ export default function MarketScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 10 }}>Fetching Live Market Data...</Text>
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#38bdf8" />
+        <Text style={styles.loadingText}>Streaming Live Market Feeds...</Text>
       </View>
     );
   }
@@ -46,16 +44,23 @@ export default function MarketScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Searchbar
-        placeholder="Search Assets (e.g. BTC, ETH)"
+        placeholder="Search coin or symbol..."
         value={search}
         onChangeText={setSearch}
         style={styles.search}
+        inputStyle={styles.searchInput}
+        iconColor="#38bdf8"
+        placeholderTextColor="#64748b"
       />
+
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
+            tintColor="#38bdf8"
+            colors={['#38bdf8']}
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
@@ -63,23 +68,40 @@ export default function MarketScreen({ navigation }) {
             }}
           />
         }
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const isPositive = item.price_change_percentage_24h >= 0;
           return (
-            <List.Item
-              title={`${item.name} (${item.symbol?.toUpperCase()})`}
-              description={`24h Vol: $${(item.total_volume / 1e6).toFixed(2)}M`}
-              left={() => <Avatar.Image size={40} source={{ uri: item.image }} style={styles.avatar} />}
-              right={() => (
-                <View style={styles.rightCol}>
-                  <Text variant="titleMedium">${item.current_price?.toLocaleString()}</Text>
-                  <Text style={{ color: isPositive ? '#2e7d32' : '#d32f2f', fontWeight: 'bold' }}>
-                    {isPositive ? '+' : ''}{item.price_change_percentage_24h?.toFixed(2)}%
-                  </Text>
-                </View>
-              )}
+            <TouchableOpacity
+              activeOpacity={0.7}
               onPress={() => navigation.navigate('TradeDetail', { asset: item })}
-            />
+            >
+              <Surface style={styles.assetCard} elevation={1}>
+                <View style={styles.leftGroup}>
+                  <Text style={styles.rankNum}>#{index + 1}</Text>
+                  <Image source={{ uri: item.image }} style={styles.coinLogo} />
+                  <View>
+                    <Text variant="titleMedium" style={styles.coinName}>
+                      {item.symbol?.toUpperCase()}
+                    </Text>
+                    <Text style={styles.coinFullName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.rightGroup}>
+                  <Text variant="titleMedium" style={styles.priceText}>
+                    ${item.current_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  <View style={[styles.badge, { backgroundColor: isPositive ? '#064e3b' : '#4c0519' }]}>
+                    <Text style={[styles.badgeText, { color: isPositive ? '#34d399' : '#fb7185' }]}>
+                      {isPositive ? '▲ +' : '▼ '}
+                      {item.price_change_percentage_24h?.toFixed(2)}%
+                    </Text>
+                  </View>
+                </View>
+              </Surface>
+            </TouchableOpacity>
           );
         }}
       />
@@ -88,9 +110,41 @@ export default function MarketScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 8 },
-  search: { marginBottom: 8 },
-  avatar: { alignSelf: 'center', backgroundColor: 'transparent' },
-  rightCol: { justifyContent: 'center', alignItems: 'flex-end' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' }
+  container: { flex: 1, backgroundColor: '#090d16', paddingHorizontal: 16, paddingTop: 12 },
+  search: {
+    backgroundColor: '#111726',
+    borderRadius: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+  },
+  searchInput: { color: '#f8fafc', fontSize: 14 },
+  centerContainer: { flex: 1, backgroundColor: '#090d16', justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: 14, color: '#94a3b8', fontSize: 14, fontWeight: '500' },
+  assetCard: {
+    backgroundColor: '#111726',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#1e293b',
+  },
+  leftGroup: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  rankNum: { color: '#475569', fontSize: 11, fontWeight: '700', width: 24 },
+  coinLogo: { width: 38, height: 38, borderRadius: 19, marginRight: 12 },
+  coinName: { fontWeight: '700', color: '#f8fafc', fontSize: 15 },
+  coinFullName: { color: '#64748b', fontSize: 12, maxWidth: 100 },
+  rightGroup: { alignItems: 'flex-end' },
+  priceText: { fontWeight: '700', color: '#f8fafc', fontSize: 15 },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  badgeText: { fontSize: 12, fontWeight: '700' },
 });
