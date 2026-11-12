@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { StatusBar } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DarkTheme as NavigationDarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { 
-  MD3DarkTheme, 
-  PaperProvider, 
-  adaptNavigationTheme 
+import {
+  MD3DarkTheme,
+  PaperProvider,
+  adaptNavigationTheme,
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './firebaseConfig';
+import { RootStackParamList, MainTabParamList } from './types';
 
 import { LoginScreen, RegisterScreen } from './screens/AuthScreens';
 import MarketScreen from './screens/MarketScreen';
@@ -19,26 +20,36 @@ import PortfolioScreen from './screens/PortfolioScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
 
-const { DarkTheme } = adaptNavigationTheme({ reactNavigationDark: NavigationDarkTheme });
+const { DarkTheme: PaperNavDarkTheme } = adaptNavigationTheme({
+  reactNavigationDark: NavigationDarkTheme,
+});
 
-// Custom FinTech Dark Palette
+const CombinedDarkTheme = {
+  ...NavigationDarkTheme,
+  ...PaperNavDarkTheme,
+  colors: {
+    ...NavigationDarkTheme.colors,
+    ...PaperNavDarkTheme.colors,
+  },
+};
+
 const theme = {
   ...MD3DarkTheme,
   colors: {
     ...MD3DarkTheme.colors,
-    primary: '#38bdf8', // Neon Sky Blue
-    secondary: '#10b981', // Emerald Profit Green
-    error: '#f43f5e', // Coral Red
-    background: '#090d16', // Deep Obsidian Navy
-    surface: '#131b2e', // Card Surface
+    primary: '#38bdf8',
+    secondary: '#10b981',
+    error: '#f43f5e',
+    background: '#090d16',
+    surface: '#131b2e',
     surfaceVariant: '#1e293b',
     onSurface: '#f1f5f9',
     outline: '#334155',
   },
 };
 
-const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
 
 function MainTabs() {
   return (
@@ -73,7 +84,7 @@ function MainTabs() {
           fontWeight: '600',
         },
         tabBarIcon: ({ color, size }) => {
-          let iconName;
+          let iconName: keyof typeof MaterialCommunityIcons.glyphMap = 'chart-timeline-variant';
           if (route.name === 'Market') iconName = 'chart-timeline-variant';
           else if (route.name === 'Portfolio') iconName = 'wallet-outline';
           else if (route.name === 'History') iconName = 'history';
@@ -91,7 +102,7 @@ function MainTabs() {
 }
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser);
@@ -100,8 +111,8 @@ export default function App() {
 
   return (
     <PaperProvider theme={theme}>
-      <StatusBar barStyle="light-content" backgroundColor="#090d16" />
-      <NavigationContainer theme={DarkTheme}>
+     <StatusBar style="light" />
+      <NavigationContainer theme={CombinedDarkTheme}>
         <Stack.Navigator
           screenOptions={{
             headerStyle: { backgroundColor: '#090d16' },
@@ -113,10 +124,10 @@ export default function App() {
           {user ? (
             <>
               <Stack.Screen name="Root" component={MainTabs} options={{ headerShown: false }} />
-              <Stack.Screen 
-                name="TradeDetail" 
-                component={TradeDetailScreen} 
-                options={{ title: 'Place Market Order' }} 
+              <Stack.Screen
+                name="TradeDetail"
+                component={TradeDetailScreen}
+                options={{ title: 'Place Market Order' }}
               />
             </>
           ) : (
